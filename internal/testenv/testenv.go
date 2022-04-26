@@ -14,7 +14,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"internal/cfg"
+	"github.com/ahilananantha/zip/internal/cfg"
 	"os"
 	"os/exec"
 	"path/filepath"

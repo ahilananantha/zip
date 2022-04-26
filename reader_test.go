@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"internal/obscuretestdata"
+	"github.com/ahilananantha/zip/internal/obscuretestdata"
 	"io"
 	"io/fs"
 	"os"

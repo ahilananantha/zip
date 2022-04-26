@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"internal/testenv"
+	"github.com/ahilananantha/zip/internal/testenv"
 	"io"
 	"runtime"
 	"sort"
