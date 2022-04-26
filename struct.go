@@ -16,6 +16,11 @@ fields. The 64 bit fields will always contain the correct value and
 for normal archives both fields will be the same. For files requiring
 the ZIP64 format the 32 bit fields will be 0xffffffff and the 64 bit
 fields must be used instead.
+
+Patched with changes originally from https://github.com/alexmullins/zip
+to support reading and writing password protected ZIP archives using
+Winzip's AES encryption method:
+See: http://www.winzip.com/aes_info.htm
 */
 package zip
 
@@ -75,6 +80,9 @@ const (
 	unixExtraID        = 0x000d // UNIX
 	extTimeExtraID     = 0x5455 // Extended timestamp
 	infoZipUnixExtraID = 0x5855 // Info-ZIP Unix extension
+	// Begin encryption changes
+	winzipAesExtraId   = 0x9901 // winzip AES Extra Field
+	// End encryption changes
 )
 
 // FileHeader describes a file within a zip file.
@@ -135,6 +143,22 @@ type FileHeader struct {
 	UncompressedSize64 uint64
 	Extra              []byte
 	ExternalAttrs      uint32 // Meaning depends on CreatorVersion
+
+	// Begin encryption changes
+
+	// DeferAuth being set to true will delay hmac auth/integrity
+	// checks when decrypting a file meaning the reader will be
+	// getting unauthenticated plaintext. It is recommended to leave
+	// this set to false. For more detail:
+	// https://www.imperialviolet.org/2014/06/27/streamingencryption.html
+	// https://www.imperialviolet.org/2015/05/16/aeads.html
+	DeferAuth bool
+
+	password    passwordFn // Returns the password to use when reading/writing
+	ae          uint16
+	aesStrength byte
+
+	// End encryption/zip changes
 }
 
 // FileInfo returns an fs.FileInfo for the FileHeader.

@@ -365,8 +365,22 @@ func (w *Writer) CreateHeader(fh *FileHeader) (io.Writer, error) {
 		if comp == nil {
 			return nil, ErrAlgorithm
 		}
+		// Begin encryption changes
+		// check for password
+		var sw io.Writer = fw.compCount
+		if fh.password != nil {
+			// we have a password and need to encrypt.
+			fh.writeWinZipExtra()
+			fh.Method = 99 // ok to change, we've gotten the comp and wrote extra
+			ew, err := newEncryptionWriter(sw, fh.password, fw)
+			if err != nil {
+				return nil, err
+			}
+			sw = ew
+		}
 		var err error
-		fw.comp, err = comp(fw.compCount)
+		fw.comp, err = comp(sw)
+		// End encryption changes
 		if err != nil {
 			return nil, err
 		}
@@ -520,6 +534,10 @@ type fileWriter struct {
 	compCount *countWriter
 	crc32     hash.Hash32
 	closed    bool
+
+	// Begin encryption changes
+	hmac hash.Hash // possible hmac used for authentication when encrypting
+	// End encryption changes
 }
 
 func (w *fileWriter) Write(p []byte) (int, error) {
@@ -545,9 +563,26 @@ func (w *fileWriter) close() error {
 		return err
 	}
 
+	// Begin encryption changes
+	// if encrypted grab the hmac and write it out
+	if w.header.IsEncrypted() {
+		authCode := w.hmac.Sum(nil)
+		authCode = authCode[:10]
+		_, err := w.compCount.Write(authCode)
+		if err != nil {
+			return errors.New("zip: error writing authcode")
+		}
+	}
+	// End encryption changes
+
 	// update FileHeader
 	fh := w.header.FileHeader
-	fh.CRC32 = w.crc32.Sum32()
+	// Begin encryption changes
+	// ae-2 we don't write out CRC
+	if !fh.IsEncrypted() {
+		fh.CRC32 = w.crc32.Sum32()
+	}
+	// End encryption changes
 	fh.CompressedSize64 = uint64(w.compCount.count)
 	fh.UncompressedSize64 = uint64(w.rawCount.count)
 

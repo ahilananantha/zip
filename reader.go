@@ -178,13 +178,32 @@ func (f *File) Open() (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Begin encryption changes
+	// If f is encrypted, CompressedSize64 includes salt, pwvv, encrypted data,
+	// and auth code lengths
 	size := int64(f.CompressedSize64)
-	r := io.NewSectionReader(f.zipr, f.headerOffset+bodyOffset, size)
+	var r io.Reader
+	rr := io.NewSectionReader(f.zipr, f.headerOffset+bodyOffset, size)
+	// check for encryption
+	if f.IsEncrypted() {
+		if r, err = newDecryptionReader(rr, f); err != nil {
+			return nil, err
+		}
+	} else {
+		r = rr
+	}
+	// End encryption changes
 	dcomp := f.zip.decompressor(f.Method)
 	if dcomp == nil {
 		return nil, ErrAlgorithm
 	}
 	var rc io.ReadCloser = dcomp(r)
+	// Begin encryption changes
+	// If AE-2, skip CRC and possible dataDescriptor
+	if f.isAE2() {
+		return rc, nil
+	}
+	// End encryption changes
 	var desr io.Reader
 	if f.hasDataDescriptor() {
 		desr = io.NewSectionReader(f.zipr, f.headerOffset+bodyOffset+size, dataDescriptorLen)
@@ -200,6 +219,10 @@ func (f *File) Open() (io.ReadCloser, error) {
 
 // OpenRaw returns a Reader that provides access to the File's contents without
 // decompression.
+//
+// Begin encryption changes
+// Additionally note that decryption is not performed.
+// End encryption changes
 func (f *File) OpenRaw() (io.Reader, error) {
 	bodyOffset, err := f.findBodyOffset()
 	if err != nil {
@@ -415,6 +438,17 @@ parseExtras:
 			}
 			ts := int64(fieldBuf.uint32()) // ModTime since Unix epoch
 			modified = time.Unix(ts, 0)
+		// Begin encryption changes
+		case winzipAesExtraId:
+			// grab the AE version
+			f.ae = uint16(fieldBuf.uint16())
+			// skip vendor ID
+			_ = uint16(fieldBuf.uint16())
+			// AES strength
+			f.aesStrength = uint8(fieldBuf.uint8())
+			// set the actual compression method.
+			f.Method = uint16(fieldBuf.uint16())
+		// End encryption changes
 		}
 	}
 
